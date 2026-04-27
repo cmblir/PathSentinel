@@ -1,32 +1,57 @@
 {
   "name": "path-sentinel",
-  "version": "1.0.0",
-  "description": "",
+  "version": "1.1.0",
+  "description": "MCP server that scans project paths for hardcoded secrets, sensitive config files, and privacy-restricted paths before they reach an LLM.",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
   "bin": {
-    "project-guardian": "dist/index.js"
+    "path-sentinel": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "README_KR.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "node --import tsx src/index.ts",
+    "test": "node --test --import tsx \"src/__tests__/*.test.ts\"",
+    "prepublishOnly": "npm run build"
   },
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "security",
+    "secrets",
+    "scanner",
+    "claude",
+    "llm",
+    "privacy"
+  ],
+  "author": "cmblir",
   "license": "ISC",
-  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cmblir/PathSentinel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cmblir/PathSentinel/issues"
+  },
+  "homepage": "https://github.com/cmblir/PathSentinel#readme",
+  "engines": {
+    "node": ">=20"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "fs-extra": "^11.3.4",
     "glob": "^13.0.6",
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@types/fs-extra": "^11.0.4",
-    "@types/glob": "^8.1.0",
     "@types/node": "^25.6.0",
-    "ts-node": "^10.9.2",
+    "tsx": "^4.19.2",
     "typescript": "^6.0.3"
   }
 }
