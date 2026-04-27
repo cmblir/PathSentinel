@@ -1,29 +1,45 @@
-# 🛡️ PathSentinel (패스센티널)
+# PathSentinel (패스센티널)
 
-<p align="center">
-  <b>LLM 워크플로우를 위한 보이지 않는 방패.</b><br>
-  <i>모델에 코드가 전달되기 전, 민감한 정보를 자동으로 탐지하고 개인정보 경로를 보호합니다.</i>
-</p>
+로컬 프로젝트의 하드코딩된 비밀, 민감 설정 파일, 개인정보 경로를 LLM에
+**전달되기 전에** 탐지하는 Model Context Protocol(MCP) 서버.
 
-<p align="center">
-  <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Supported-blue.svg" alt="MCP"></a>
-  <a href="https://opensource.org/licenses/ISC"><img src="https://img.shields.io/badge/License-ISC-green.svg" alt="License"></a>
-</p>
+[![MCP](https://img.shields.io/badge/MCP-Supported-blue.svg)](https://modelcontextprotocol.io)
+[![License](https://img.shields.io/badge/License-ISC-green.svg)](./LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](https://nodejs.org)
+[![English](https://img.shields.io/badge/Docs-English-blue.svg)](./README.md)
+
+> 영문 정본은 [README.md](./README.md). 본 문서는 보조 번역본입니다.
 
 ---
 
-## 🤖 PathSentinel이란?
+## 무엇을 하는가
 
-**PathSentinel**은 Claude와 같은 대규모 언어 모델(LLM)이 여러분의 로컬 코드를 분석할 때 보안 게이트웨이 역할을 하는 특화된 MCP(Model Context Protocol) 서버입니다. AI가 코드베이스를 탐색할 때 실수로 `.env` 파일, SSH 키, 또는 API 토큰을 읽는 위험을 방지하고 프로젝트 내 보안 리스크를 탐지합니다.
+PathSentinel은 로컬 파일시스템과 Claude 같은 LLM 사이에서 게이트 역할을
+합니다. 모델이 프로젝트를 살피려 할 때, 서버는 다음 세 가지 보장 아래
+디렉터리를 순회합니다.
 
-## ✨ 핵심 기능
+1. **개인정보 경로는 절대 읽지 않는다.** `~/.ssh/`, `~/.aws/`, 셸 히스토리,
+   TLS 키 같은 위치는 디렉터리 워크 단계에서 제외됩니다. 존재 사실은
+   summary 카운트로만 노출되고 바이트는 메모리에 올라오지 않습니다.
+2. **민감 설정 파일은 보고하되 열지 않는다.** `.env`,
+   `credentials.json`, `service-account.json` 같은 베이스네임은 finding으로
+   surface하되 내용은 첨부하지 않습니다.
+3. **탐지된 비밀은 redact한다.** 비밀 패턴이 매치되면 finding의 excerpt는
+   첫 4자만 노출하고 나머지를 `…[REDACTED]`로 치환합니다.
 
-- **🔒 Privacy Guard**: `.ssh`, `.aws`, `.history` 등 민감한 시스템 경로에 대한 접근을 자동으로 차단합니다.
-- **🔍 Secret Radar**: AWS 키, GitHub 토큰 등 하드코딩된 비밀번호를 정교하게 찾아냅니다.
-- **🚫 Zero-Leak Policy**: 고위험 파일은 내용물 대신 존재 여부만 보고하여 모델로의 정보 유출을 차단합니다.
-- **⚡ Fast Scanning**: Glob 패턴과 효율적인 탐색으로 실시간 보안 분석을 제공합니다.
+## 탐지 규칙
 
-## 🚀 설치 방법
+| 카테고리 | 예시 | 위험도 |
+| :--- | :--- | :--- |
+| 비밀 prefix | AWS (`AKIA`/`ASIA`), GitHub (`ghp_/gho_/ghu_/ghs_/ghr_`, `github_pat_`), Slack (`xox?-`), Stripe (`sk_live_/sk_test_`), Google (`AIza`), OpenAI (`sk-`/`sk-proj-`), Anthropic (`sk-ant-`) | High |
+| 암호화 자료 | `-----BEGIN ... PRIVATE KEY-----`, JWT, GCP service-account JSON | High / Medium |
+| 일반 할당식 | `password = "..."`, `api_key: "..."` (12자 이상 혼합문자) | Medium |
+| 민감 베이스네임 | `.env*`, `credentials.json`, `secrets.{yml,yaml}`, `firebase-adminsdk.json` | Medium |
+| 개인정보 경로 (차단) | `**/.ssh/**`, `**/.aws/**`, `**/.gnupg/**`, `**/*.pem`, `**/*.key`, `**/.npmrc`, `**/.netrc`, 셸 히스토리, OS 키체인 | 카운트만 보고 — 내용은 절대 읽지 않음 |
+
+전체 목록은 [`src/patterns.ts`](./src/patterns.ts) 참조.
+
+## 설치
 
 ```bash
 git clone https://github.com/cmblir/PathSentinel.git
@@ -32,39 +48,128 @@ npm install
 npm run build
 ```
 
-## ⚙️ 설정 방법
+Node.js **20 이상** 필요.
+
+## 설정
+
+`/absolute/path/to/PathSentinel`은 클론한 위치로 교체하세요.
 
 ### Claude Desktop
-`claude_desktop_config.json` 파일에 아래 설정을 추가하세요:
+
+`claude_desktop_config.json` 편집:
 
 ```json
 {
   "mcpServers": {
     "path-sentinel": {
       "command": "node",
-      "args": ["/Users/o/project-guardian/dist/index.js"]
+      "args": ["/absolute/path/to/PathSentinel/dist/index.js"]
     }
   }
 }
 ```
 
 ### Claude Code (CLI)
-**Claude Code**에서 PathSentinel을 사용하려면 다음 명령어를 실행하여 MCP 서버를 등록하세요:
 
 ```bash
-claude mcp add path-sentinel node /Users/o/project-guardian/dist/index.js
+claude mcp add path-sentinel node /absolute/path/to/PathSentinel/dist/index.js
 ```
 
-등록 후에는 다음과 같이 요청할 수 있습니다:
-> "Claude, path-sentinel을 사용해서 현재 디렉토리의 보안 위험을 스캔해줘."
+이후 다음과 같이 요청합니다:
 
-## 🛠️ 탐지 항목
+> path-sentinel을 사용해서 현재 디렉터리의 비밀과 민감 파일을 스캔해줘.
 
-| 유형 | 설명 | 위험도 |
+## 도구: `scan_path`
+
+**입력**
+
+| 필드 | 타입 | 필수 | 설명 |
+| :--- | :--- | :--- | :--- |
+| `path` | string | 예 | 스캔할 프로젝트·디렉터리·단일 파일의 절대 또는 상대 경로 |
+| `followSymlinks` | boolean | 아니오 | 심볼릭 링크 추적 여부. 기본값 false. |
+
+**출력** — `target`, `findings`, `summary`로 구성된 JSON:
+
+```json
+{
+  "target": "/Users/me/project",
+  "findings": [
+    {
+      "severity": "high",
+      "type": "Hardcoded Secret",
+      "rule": "AWS Access Key",
+      "file": "/Users/me/project/src/legacy.js",
+      "line": 12,
+      "description": "Possible AWS Access Key detected (confidence: high).",
+      "excerpt": "const KEY = \"AKIA…[REDACTED]\";"
+    },
+    {
+      "severity": "medium",
+      "type": "Sensitive File",
+      "rule": "Sensitive Config",
+      "file": "/Users/me/project/.env",
+      "description": "Sensitive configuration file present: .env. File contents are NOT included in this report."
+    }
+  ],
+  "summary": {
+    "scannedFiles": 142,
+    "skippedBinary": 17,
+    "skippedLarge": 1,
+    "blockedByPrivacy": 38,
+    "durationMs": 184
+  }
+}
+```
+
+findings가 비었을 때는 `message` 필드가 추가되어 깨끗한 스캔과 빈 오류를
+구분할 수 있습니다.
+
+## 프로그래밍적 사용
+
+스캐너는 라이브러리로도 export됩니다:
+
+```ts
+import { ProjectGuardian } from "path-sentinel";
+
+const guardian = new ProjectGuardian({ followSymlinks: false });
+const result = await guardian.scan("/path/to/project");
+console.log(result.summary, result.findings);
+```
+
+## 한계
+
+- **패턴 기반 탐지**. 엔트로피·AST 분석은 수행하지 않습니다. 인식 가능한
+  prefix가 없고 generic 규칙의 12자 임계치 이하인 비밀은 빠질 수 있습니다.
+- **줄당 첫 매치**. 동일 줄에 여러 비밀이 있으면 finding은 여러 번 보고되지만
+  excerpt는 단일 매치 기준이므로 line 번호로 확인하세요.
+- **1 MiB 초과 파일은 스킵**. 임베딩 시 `new ProjectGuardian({ maxFileBytes: ... })`로 조정 가능.
+- **git 히스토리 스캔 없음**. 현재 working tree만 검사합니다.
+
+## 개발
+
+```bash
+npm install
+npm run dev      # tsx로 소스에서 실행
+npm run build    # dist/ 산출
+npm test         # node:test 러너
+```
+
+테스트는 `src/__tests__/`에 위치하며 OS temp 디렉터리에 합성 fixture를
+만들어 동작합니다. 실제 비밀은 작성·읽지 않습니다.
+
+## 트러블슈팅
+
+| 증상 | 원인 | 조치 |
 | :--- | :--- | :--- |
-| **Secrets** | AWS 키, GitHub 토큰, 일반 API 키 | 🔴 높음 |
-| **Config** | `.env`, `credentials.json`, `secrets.yml` | 🟡 중간 |
-| **Privacy** | `.ssh`, `.gnupg`, `*history`, `.npmrc` | 🔒 차단됨 |
+| `Cannot find module ".../dist/index.js"` | 빌드를 건너뜀 | `npm run build` 실행 |
+| 비밀이 있는 레포인데 0 findings | 개인정보 경로·`node_modules/`가 기본 제외됨 | `summary.blockedByPrivacy`, `summary.skippedBinary` 확인 |
+| `Path does not exist` | 경로 오타 또는 cwd 차이 | 절대 경로 전달 |
+| stderr에 권한 오류 로그 | 현재 사용자가 읽을 수 없는 파일 | 적절한 권한으로 실행. PathSentinel은 해당 파일을 스킵하고 계속 진행 |
 
-## 📄 라이선스
-ISC License.
+## 기여
+
+이슈와 PR 환영합니다 — 특히 정밀도 높은 새 탐지 규칙과 false-positive 보정.
+
+## 라이선스
+
+ISC. [LICENSE](./LICENSE) 참조.
