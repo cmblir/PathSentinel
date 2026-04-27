@@ -1,7 +1,16 @@
 # 🛡️ PathSentinel
 
 <p align="center">
-  <img src="https://raw.githubusercontent.com/cmblir/PathSentinel/main/assets/logo.png" width="200" alt="PathSentinel Logo">
+  <pre>
+     .--------.
+    /          \
+   |  🔍  🛡️  |  < "Scanning Safely!"
+    \  ____  /
+    /      \
+   |        |
+   |   🍌   |  < Senti-Nana is watching!
+    \______/
+  </pre>
 </p>
 
 <p align="center">
@@ -12,8 +21,7 @@
 <p align="center">
   <a href="https://modelcontextprotocol.io"><img src="https://img.shields.io/badge/MCP-Supported-blue.svg" alt="MCP"></a>
   <a href="https://opensource.org/licenses/ISC"><img src="https://img.shields.io/badge/License-ISC-green.svg" alt="License"></a>
-  <a href="https://github.com/cmblir/PathSentinel/stargazers"><img src="https://img.shields.io/github/stars/cmblir/PathSentinel?style=flat-square" alt="Stars"></a>
-  <a href="https://github.com/cmblir/PathSentinel/issues"><img src="https://img.shields.io/github/issues/cmblir/PathSentinel?style=flat-square" alt="Issues"></a>
+  <a href="./README_KR.md"><img src="https://img.shields.io/badge/Docs-%ED%95%9C%EA%B5%AD%EC%96%B4-red.svg" alt="KO Docs"></a>
 </p>
 
 ---
@@ -63,29 +71,9 @@ Add this to your `claude_desktop_config.json`:
 | **Config** | `.env`, `credentials.json`, `secrets.yml` | 🟡 Medium |
 | **Privacy** | `.ssh`, `.gnupg`, `*history`, `.npmrc` | 🔒 Blocked |
 
-## 🎨 Mascot: The Sentinel
-```text
-      / \
-     |   |      [ SCANNING... ]
-     |   |    /
-   _/[---]\_
-  |         |
-  |  (O) (O) |  <- Cyber-Lens eyes
-  |    ___   |
-   \_______/
-     /   \
-    /     \
-```
-
 ## 🤝 Contributing
 
 We love contributions! Whether it's a new secret pattern or a better exclusion rule, feel free to open an Issue or PR. 
-
-1. Fork the Project
-2. Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the Branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
 
 ## 📄 License
 Distributed under the ISC License. See `LICENSE` for more information.
