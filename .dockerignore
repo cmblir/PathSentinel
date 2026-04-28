@@ -1,0 +1,25 @@
+# Build context excludes.
+# Keep this aligned with .gitignore plus extras that bloat the image.
+
+node_modules
+dist
+.git
+.github
+*.log
+*.tsbuildinfo
+
+# IDE / OS
+.vscode
+.idea
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+coverage
+.nyc_output
+
+# Docs we do not need at runtime (README and LICENSE are copied
+# explicitly in the Dockerfile).
+README_KR.md
+.pre-commit-hooks.yaml
+action.yml
