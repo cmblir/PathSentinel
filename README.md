@@ -3,7 +3,8 @@
 <p align="center">
   <b>Privacy-first secret scanner for the LLM era.</b><br/>
   Stops hardcoded secrets, sensitive config files, and personal credential paths
-  from ever reaching a Large Language Model.
+  from ever reaching a Large Language Model — through MCP, CLI, pre-commit,
+  GitHub Actions, or Docker.
 </p>
 
 <p align="center">
@@ -21,9 +22,14 @@
 - [Features](#features)
 - [Quick Start](#quick-start)
 - [Installation](#installation)
+  - [Claude Desktop / Claude Code (MCP)](#claude-desktop--claude-code-mcp)
+  - [Standalone CLI](#standalone-cli)
+  - [pre-commit framework](#pre-commit-framework)
+  - [GitHub Action](#github-action)
+  - [Docker](#docker)
 - [Usage](#usage)
 - [Detection Rules](#detection-rules)
-- [Output Schema](#output-schema)
+- [Output Formats](#output-formats)
 - [Comparison](#comparison-with-other-scanners)
 - [FAQ](#faq)
 - [Limitations](#limitations)
@@ -63,12 +69,15 @@ its job is to make sure the bytes never enter the prompt in the first place.
 - **Redacted excerpts.** When a secret pattern matches, only the first 4
   characters appear; the rest is replaced with `…[REDACTED]`. The full secret
   never leaves the scanner.
-- **Stable, structured output.** JSON with stable severity / rule labels so
-  graders, CI, and downstream tools can assert on results.
+- **Five entry points, one engine.** MCP (stdio), standalone CLI, pre-commit
+  hook, GitHub Action, Docker image — all share the same `ProjectGuardian`
+  scanner.
+- **Three output formats.** Human-readable text, machine-readable JSON, and
+  SARIF 2.1.0 for GitHub Code Scanning / GitLab SAST.
+- **Baseline / diff mode.** Adopt PathSentinel on a legacy repo without fixing
+  every existing finding before the gate goes green.
 - **Zero side-effects.** No network calls, no telemetry, no config files
   written, no caches created. Pure read-only inspection.
-- **Built for MCP.** Drop-in tool for Claude Desktop, Claude Code, and any
-  Model Context Protocol client.
 
 ## Quick Start
 
@@ -78,13 +87,19 @@ cd PathSentinel
 npm install && npm run build
 ```
 
-Then point Claude Code at it:
+Use it as a CLI:
+
+```bash
+node dist/index.js scan .
+```
+
+Or wire it into Claude Code:
 
 ```bash
 claude mcp add path-sentinel node "$(pwd)/dist/index.js"
 ```
 
-Ask the model:
+Then ask the model:
 
 > Use `path-sentinel` to scan the current directory and tell me if anything
 > sensitive would leak before I share this repo.
@@ -93,8 +108,9 @@ Ask the model:
 
 ### Prerequisites
 
-- Node.js **20 or newer**
-- npm (or any compatible package manager)
+- Node.js **20 or newer** (CLI / MCP installs)
+- Docker (Docker install)
+- `pre-commit` framework (pre-commit install)
 
 ### Build from source
 
@@ -105,7 +121,7 @@ npm install
 npm run build
 ```
 
-### Wire it into a client
+### Claude Desktop / Claude Code (MCP)
 
 #### Claude Desktop
 
@@ -128,11 +144,81 @@ Edit `claude_desktop_config.json`:
 claude mcp add path-sentinel node /absolute/path/to/PathSentinel/dist/index.js
 ```
 
-#### Other MCP clients
+Any MCP client that speaks stdio works the same way — the `scan_path` tool
+will appear automatically.
 
-Any client that speaks MCP over stdio works. Point it at
-`node /absolute/path/to/PathSentinel/dist/index.js` and the `scan_path` tool
-will appear.
+### Standalone CLI
+
+```bash
+node dist/index.js scan <path> [options]
+
+# or, after `npm install -g .`:
+path-sentinel scan <path> [options]
+```
+
+Options: `--format text|json|sarif`, `--baseline <file>`,
+`--severity high|medium|low`, `--follow-symlinks`, `--max-bytes <N>`,
+`--no-color`, `--quiet`, `--help`, `--version`.
+
+Exit codes: **0** clean, **1** findings present (CI gate), **2** invocation
+error.
+
+### pre-commit framework
+
+Add to your `.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/cmblir/PathSentinel
+    rev: v1.1.0
+    hooks:
+      - id: path-sentinel
+```
+
+The hook scans the working tree (not just staged files) so privacy paths and
+sensitive basenames are caught.
+
+### GitHub Action
+
+```yaml
+# .github/workflows/secrets.yml
+name: PathSentinel
+on: [push, pull_request]
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: cmblir/PathSentinel@v1.1.0
+        id: ps
+        with:
+          path: '.'
+          format: 'sarif'
+          output: 'pathsentinel.sarif'
+          fail-on-findings: 'true'
+      - if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'pathsentinel.sarif'
+```
+
+Inputs: `path`, `format`, `baseline`, `severity`, `output`, `fail-on-findings`.
+Outputs: `findings-count`, `report-path`.
+
+### Docker
+
+```bash
+docker build -t path-sentinel .
+
+# Scan the current directory (read-only mount):
+docker run --rm -v "$PWD:/scan:ro" path-sentinel /scan
+
+# Emit SARIF for downstream tools:
+docker run --rm -v "$PWD:/scan:ro" path-sentinel /scan --format sarif
+
+# Run as MCP server over stdio:
+docker run --rm -i path-sentinel mcp
+```
 
 ## Usage
 
@@ -149,24 +235,35 @@ The server exposes a single tool:
 | Field | Type | Required | Default | Description |
 | :--- | :--- | :--- | :--- | :--- |
 | `path` | string | yes | — | Absolute or relative path to a project, directory, or single file. |
-| `followSymlinks` | boolean | no | `false` | Follow symlinks during traversal. Off by default to avoid loops and to prevent escape into unrelated trees. |
+| `followSymlinks` | boolean | no | `false` | Follow symlinks during traversal. Off by default to avoid loops. |
+
+### As a CLI
+
+```bash
+# Plain text scan with TTY-aware colours
+path-sentinel scan ./repo
+
+# JSON for further processing
+path-sentinel scan ./repo --format json --quiet
+
+# SARIF for GitHub Code Scanning
+path-sentinel scan ./repo --format sarif > report.sarif
+
+# Adopt incrementally on a legacy repo
+path-sentinel scan ./repo --format json --quiet > baseline.json
+# ...later...
+path-sentinel scan ./repo --baseline baseline.json
+```
 
 ### Programmatic
 
 ```ts
-import { ProjectGuardian } from "path-sentinel";
+import { ProjectGuardian, formatResult } from "path-sentinel";
 
-const guardian = new ProjectGuardian({
-  followSymlinks: false,
-  maxFileBytes: 1024 * 1024, // 1 MiB
-  extraIgnore: ["**/legacy/**"],
-});
-
+const guardian = new ProjectGuardian({ followSymlinks: false });
 const result = await guardian.scan("/path/to/project");
-console.log(result.summary);
-for (const finding of result.findings) {
-  console.log(`[${finding.severity}] ${finding.rule} @ ${finding.file}`);
-}
+
+console.log(formatResult(result, "sarif", { color: false, quiet: true }));
 ```
 
 ### Example session
@@ -174,12 +271,14 @@ for (const finding of result.findings) {
 ```
 > Use path-sentinel to scan ./demo
 
-Found 3 issues:
+3 findings
   [high]   AWS Access Key       demo/src/legacy.js:12
+        const KEY = "AKIA…[REDACTED]";
   [medium] Sensitive Config     demo/.env
   [medium] OpenAI API Key       demo/scripts/oneoff.ts:4
+        const oai = "sk-…[REDACTED]";
 
-Summary: 142 files scanned, 17 binary skipped, 38 paths blocked by privacy rules (184 ms)
+target=demo  scanned=142  binary=17  large=1  privacy_blocked=38  184ms
 ```
 
 ## Detection Rules
@@ -195,9 +294,9 @@ Summary: 142 files scanned, 17 binary skipped, 38 paths blocked by privacy rules
 
 The full lists live in [`src/patterns.ts`](./src/patterns.ts).
 
-## Output Schema
+## Output Formats
 
-Every successful scan returns the same JSON shape:
+### JSON / MCP tool result
 
 ```json
 {
@@ -211,13 +310,6 @@ Every successful scan returns the same JSON shape:
       "line": 12,
       "description": "Possible AWS Access Key detected (confidence: high).",
       "excerpt": "const KEY = \"AKIA…[REDACTED]\";"
-    },
-    {
-      "severity": "medium",
-      "type": "Sensitive File",
-      "rule": "Sensitive Config",
-      "file": "/Users/me/project/.env",
-      "description": "Sensitive configuration file present: .env. File contents are NOT included in this report."
     }
   ],
   "summary": {
@@ -233,6 +325,38 @@ Every successful scan returns the same JSON shape:
 When no findings are produced, an additional `message` field is included so
 the caller can distinguish a clean scan from an empty error.
 
+### SARIF 2.1.0
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+  "version": "2.1.0",
+  "runs": [{
+    "tool": {
+      "driver": {
+        "name": "PathSentinel",
+        "version": "1.1.0",
+        "informationUri": "https://github.com/cmblir/PathSentinel",
+        "rules": [{ "id": "AWS Access Key", "name": "AWS Access Key", "...": "..." }]
+      }
+    },
+    "results": [{
+      "ruleId": "AWS Access Key",
+      "level": "error",
+      "message": { "text": "Possible AWS Access Key detected (confidence: high)." },
+      "locations": [{
+        "physicalLocation": {
+          "artifactLocation": { "uri": "file:///Users/me/project/src/legacy.js" },
+          "region": { "startLine": 12 }
+        }
+      }]
+    }]
+  }]
+}
+```
+
+Severity mapping: high → `error`, medium → `warning`, low → `note`.
+
 ## Comparison with Other Scanners
 
 | | PathSentinel | gitleaks | trufflehog | detect-secrets |
@@ -241,6 +365,8 @@ the caller can distinguish a clean scan from an empty error.
 | Blocks reading of `~/.ssh`, `~/.aws` | yes | no | no | no |
 | Reports `.env` without exposing contents | yes | partial | partial | partial |
 | Excerpts redacted before output | yes | no | no | partial |
+| SARIF 2.1.0 output | yes | yes | yes | no |
+| pre-commit / GitHub Action shipped | yes | yes | yes | yes |
 | Git history scanning | no | yes | yes | no |
 | Live verification of credentials | no | no | yes | no |
 | Entropy / AST analysis | no | yes | yes | yes |
@@ -271,9 +397,9 @@ A typical 50k-file repo scans in well under a second on a modern laptop.
 Files larger than 1 MiB and binary extensions are skipped by default.
 
 **Q. Can it run outside MCP?**
-The `ProjectGuardian` class is exported and has no MCP dependencies, so you
-can use it from any Node script today. Standalone CLI / GitHub Action /
-pre-commit integrations are on the roadmap.
+Yes — five ways. Standalone CLI (`path-sentinel scan`), pre-commit hook,
+GitHub Action, Docker image, and any Node script via the exported
+`ProjectGuardian` class.
 
 **Q. Is it safe to run on `$HOME`?**
 Yes — that is the explicit design goal. Privacy paths are filtered before
@@ -290,7 +416,8 @@ count, which is the proof.
 - **Files larger than 1 MiB are skipped** to keep scans fast. Override with
   `new ProjectGuardian({ maxFileBytes: ... })`.
 - **Working tree only.** No git history, no remote, no binary artefacts.
-- **stdio-only transport** today. Streamable HTTP transport is on the roadmap.
+- **stdio-only MCP transport** today. Streamable HTTP transport is on the
+  roadmap.
 
 ## Development
 
@@ -307,13 +434,25 @@ OS temp directory; no real secrets are written or read.
 Project layout:
 
 ```
-src/
-├── index.ts      # CLI bootstrap + public API re-exports
-├── server.ts     # MCP wiring (stdio transport, tool registration)
-├── scanner.ts    # ProjectGuardian — traversal + content matching
-├── patterns.ts   # Detection rules (privacy / sensitive / secrets)
-├── types.ts      # Domain types
-└── __tests__/    # node:test suites
+.
+├── action.yml                # GitHub Action metadata
+├── Dockerfile                # Multi-stage container build
+├── .pre-commit-hooks.yaml    # pre-commit framework hook definition
+└── src/
+    ├── index.ts              # Entry point — argv dispatch + public API
+    ├── server.ts             # MCP wiring (stdio transport)
+    ├── scanner.ts            # ProjectGuardian — traversal + content matching
+    ├── patterns.ts           # Detection rules (privacy / sensitive / secrets)
+    ├── types.ts              # Domain types
+    ├── version.ts            # Single source of truth for VERSION
+    ├── cli.ts                # Standalone CLI dispatcher
+    ├── baseline.ts           # Baseline / diff support
+    ├── format/
+    │   ├── index.ts          # Formatter dispatch
+    │   ├── text.ts           # Human-readable terminal output
+    │   ├── json.ts           # JSON (matches MCP tool result)
+    │   └── sarif.ts          # SARIF 2.1.0
+    └── __tests__/            # node:test suites
 ```
 
 ## Contributing
@@ -323,8 +462,7 @@ Issues and PRs are welcome — especially:
 - New high-precision detection rules (please include a sample line and a
   citation to the official format spec).
 - False-positive reports with a reproducer.
-- Additional adapters (CLI subcommand, GitHub Action, Docker image, SARIF
-  output — see the [project issues](https://github.com/cmblir/PathSentinel/issues)).
+- Additional adapters and integrations.
 
 Run `npm test` and `npm run build` before opening a PR.
 
