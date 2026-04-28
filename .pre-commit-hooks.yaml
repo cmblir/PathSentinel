@@ -1,0 +1,26 @@
+# pre-commit framework integration.
+#
+# Wire PathSentinel into your repo's .pre-commit-config.yaml:
+#
+#   repos:
+#     - repo: https://github.com/cmblir/PathSentinel
+#       rev: v1.1.0
+#       hooks:
+#         - id: path-sentinel
+#
+# The hook scans the working tree (not just staged files) so that it
+# catches sensitive paths a stage-only scan would miss. Override the
+# scanned path or add a baseline by extending `args:` in your config.
+
+- id: path-sentinel
+  name: path-sentinel
+  description: >-
+    Scan the working tree for hardcoded secrets, sensitive config
+    files, and privacy-restricted paths. Blocks the commit when any
+    finding is reported.
+  entry: path-sentinel scan
+  args: [".", "--quiet", "--no-color"]
+  language: node
+  pass_filenames: false
+  always_run: true
+  stages: [pre-commit]
