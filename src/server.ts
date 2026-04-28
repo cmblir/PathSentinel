@@ -15,9 +15,10 @@ import {
 import { z } from "zod";
 
 import { ProjectGuardian } from "./scanner.js";
+import { VERSION } from "./version.js";
 
 const SERVER_NAME = "path-sentinel";
-const SERVER_VERSION = "1.1.0";
+const SERVER_VERSION = VERSION;
 
 const ScanPathSchema = z.object({
   path: z
