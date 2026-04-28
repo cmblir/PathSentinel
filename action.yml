@@ -1,0 +1,115 @@
+name: PathSentinel
+description: >-
+  Scan a path for hardcoded secrets, sensitive config files, and
+  privacy-restricted locations. Optional SARIF output integrates with
+  GitHub Code Scanning.
+author: cmblir
+
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: 'Path to scan, relative to the workflow workspace.'
+    required: false
+    default: '.'
+  format:
+    description: 'Output format: text, json, or sarif.'
+    required: false
+    default: 'sarif'
+  baseline:
+    description: 'Path to a baseline JSON report. Findings present in the baseline are ignored.'
+    required: false
+    default: ''
+  severity:
+    description: 'Filter findings to >= this severity (high|medium|low). Text format only.'
+    required: false
+    default: ''
+  output:
+    description: 'Write the report to this file. Empty string prints to stdout.'
+    required: false
+    default: 'pathsentinel.sarif'
+  fail-on-findings:
+    description: 'Fail the step when findings are present.'
+    required: false
+    default: 'true'
+
+outputs:
+  findings-count:
+    description: 'Number of findings reported by the scan.'
+    value: ${{ steps.scan.outputs.count }}
+  report-path:
+    description: 'Path to the written report file (empty if printed to stdout).'
+    value: ${{ steps.scan.outputs.report }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Build PathSentinel
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        set -euo pipefail
+        if [ -f package-lock.json ]; then
+          npm ci --no-audit --no-fund
+        else
+          npm install --no-audit --no-fund
+        fi
+        npm run build
+
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        PS_PATH: ${{ inputs.path }}
+        PS_FORMAT: ${{ inputs.format }}
+        PS_BASELINE: ${{ inputs.baseline }}
+        PS_SEVERITY: ${{ inputs.severity }}
+        PS_OUTPUT: ${{ inputs.output }}
+        PS_FAIL: ${{ inputs.fail-on-findings }}
+        PS_BIN: ${{ github.action_path }}/dist/index.js
+      run: |
+        set -uo pipefail
+
+        ARGS=(scan "$PS_PATH" --format "$PS_FORMAT" --no-color)
+        if [ -n "$PS_BASELINE" ]; then ARGS+=(--baseline "$PS_BASELINE"); fi
+        if [ -n "$PS_SEVERITY" ]; then ARGS+=(--severity "$PS_SEVERITY"); fi
+
+        STATUS=0
+        if [ -n "$PS_OUTPUT" ]; then
+          node "$PS_BIN" "${ARGS[@]}" > "$PS_OUTPUT" || STATUS=$?
+        else
+          node "$PS_BIN" "${ARGS[@]}" || STATUS=$?
+        fi
+
+        if [ "$STATUS" = 2 ]; then
+          echo "::error::path-sentinel invocation failed"
+          exit 2
+        fi
+
+        COUNT=0
+        if [ -n "$PS_OUTPUT" ] && [ -f "$PS_OUTPUT" ]; then
+          case "$PS_FORMAT" in
+            sarif)
+              COUNT=$(node -e "const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf-8'));console.log((d.runs?.[0]?.results||[]).length)" "$PS_OUTPUT")
+              ;;
+            json)
+              COUNT=$(node -e "const d=JSON.parse(require('fs').readFileSync(process.argv[1],'utf-8'));console.log((d.findings||[]).length)" "$PS_OUTPUT")
+              ;;
+          esac
+        fi
+
+        echo "count=$COUNT" >> "$GITHUB_OUTPUT"
+        echo "report=$PS_OUTPUT" >> "$GITHUB_OUTPUT"
+
+        if [ "$PS_FAIL" = "true" ] && [ "$STATUS" = "1" ]; then
+          echo "::warning::PathSentinel reported $COUNT finding(s)"
+          exit 1
+        fi
+        exit 0
